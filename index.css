@@ -1,0 +1,581 @@
+import React, { useState } from 'react';
+import { Device } from '../types';
+import { formatPriceByCountry } from '../data';
+import { Sparkles, Trophy, Weight, Battery, ThumbsUp, Scale, RefreshCw, Layers, Check, AlertCircle } from 'lucide-react';
+
+interface DeviceComparerProps {
+  devices: Device[];
+  onViewDeviceDetails?: (deviceId: string) => void;
+  countryCode?: 'US' | 'UK' | 'EU' | 'IN' | 'CA';
+}
+
+export default function DeviceComparer({ devices, onViewDeviceDetails, countryCode = 'US' }: DeviceComparerProps) {
+  const [slot1Id, setSlot1Id] = useState<string>(devices[0]?.id || '');
+  const [slot2Id, setSlot2Id] = useState<string>(devices[2]?.id || devices[1]?.id || devices[0]?.id || '');
+  const [slot3Id, setSlot3Id] = useState<string>(''); // Optional third slot
+  const [slot4Id, setSlot4Id] = useState<string>(''); // Optional fourth slot
+
+  // Highlighting states
+  const [highlightMode, setHighlightMode] = useState<'none' | 'differences' | 'similarities'>('differences');
+
+  // Convert slot selections into active devices
+  const activeSlots = [slot1Id, slot2Id, slot3Id, slot4Id].filter(Boolean);
+  const activeDevices = activeSlots
+    .map((id) => devices.find((d) => d.id === id))
+    .filter((d): d is Device => !!d);
+
+  // Selector helper to populate choices
+  const selectableDevices = devices;
+
+  // Numerical Parser helpers to evaluate spec "Winners"
+  const parseBattery = (capacityStr?: string): number => {
+    if (!capacityStr) return 0;
+    const match = capacityStr.replace(',', '').match(/(\d+)\s*mAh/i);
+    return match ? parseInt(match[1]) : 0;
+  };
+
+  const parseWeight = (weightStr?: string): number => {
+    if (!weightStr) return 999;
+    const match = weightStr.match(/(\d+)\s*grams/i);
+    return match ? parseInt(match[1]) : 999;
+  };
+
+  // Compare active metrics to highlight the leaders
+  const batteryCapacities = activeDevices.map(d => ({ id: d.id, val: parseBattery(d.specs.battery.capacity) }));
+  const maxBattery = Math.max(...batteryCapacities.map(b => b.val));
+  const batteryWinnerId = maxBattery > 0 && batteryCapacities.filter(b => b.val === maxBattery).length === 1
+    ? batteryCapacities.find(b => b.val === maxBattery)?.id
+    : null;
+
+  const weights = activeDevices.map(d => ({ id: d.id, val: parseWeight(d.specs.design.weight) }));
+  const minWeight = Math.min(...weights.map(w => w.val));
+  const weightWinnerId = minWeight < 999 && weights.filter(w => w.val === minWeight).length === 1
+    ? weights.find(w => w.val === minWeight)?.id
+    : null;
+
+  const ratings = activeDevices.map(d => ({ id: d.id, val: d.overallRating }));
+  const maxRating = Math.max(...ratings.map(r => r.val));
+  const ratingWinnerId = maxRating > 0 && ratings.filter(r => r.val === maxRating).length === 1
+    ? ratings.find(r => r.val === maxRating)?.id
+    : null;
+
+  // Helper row checks: Is this row identical or different across all chosen slots?
+  const isRowIdentical = (extractor: (d: Device) => string | number | boolean) => {
+    if (activeDevices.length < 2) return true;
+    const values = activeDevices.map(extractor).map(v => String(v).trim().toLowerCase());
+    return new Set(values).size === 1;
+  };
+
+  // Determine row style details
+  const getRowHighlightClass = (identical: boolean) => {
+    if (highlightMode === 'differences' && !identical) {
+      return 'bg-blue-50/50 dark:bg-blue-550/[0.04] border-l-2 border-blue-500 transition-colors';
+    }
+    if (highlightMode === 'similarities' && identical) {
+      return 'bg-emerald-50/45 dark:bg-emerald-500/[0.04] border-l-2 border-emerald-550 transition-colors';
+    }
+    return '';
+  };
+
+  return (
+    <div className="space-y-6 text-left font-sans" id="device-comparison">
+      {/* Selector controllers row */}
+      <div className="p-6 bg-slate-50 dark:bg-brand-panel rounded-3xl border border-slate-200 dark:border-slate-800/80 shadow-sm space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <Scale className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+            <h3 className="font-extrabold text-base text-slate-900 dark:text-white">Configure Comparison Matrix (2-4 Phones)</h3>
+          </div>
+          
+          {/* Highlight controller */}
+          <div className="flex bg-slate-100 dark:bg-slate-950 p-1 rounded-xl border border-slate-200 dark:border-slate-850 self-start sm:self-auto">
+            <button
+              onClick={() => setHighlightMode('differences')}
+              className={`px-3 py-1 text-[10px] font-bold rounded-lg transition-all cursor-pointer ${
+                highlightMode === 'differences'
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
+              }`}
+            >
+              Highlight Differences
+            </button>
+            <button
+              onClick={() => setHighlightMode('similarities')}
+              className={`px-3 py-1 text-[10px] font-bold rounded-lg transition-all cursor-pointer ${
+                highlightMode === 'similarities'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
+              }`}
+            >
+              Highlight Similarities
+            </button>
+            <button
+              onClick={() => setHighlightMode('none')}
+              className={`px-3 py-1 text-[10px] font-bold rounded-lg transition-all cursor-pointer ${
+                highlightMode === 'none'
+                  ? 'bg-slate-250 dark:bg-brand-card text-slate-800 dark:text-slate-200 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
+              }`}
+            >
+              Off
+            </button>
+          </div>
+        </div>
+
+        {/* 4 slots pickers */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Slot 1 */}
+          <div className="space-y-1">
+            <span className="flex items-center justify-between">
+              <label className="block text-[10px] font-bold text-slate-400 uppercase">Device Slot 1</label>
+              <span className="h-1.5 w-1.5 rounded-full bg-blue-500 block" />
+            </span>
+            <select
+              value={slot1Id}
+              onChange={(e) => setSlot1Id(e.target.value)}
+              className="w-full text-xs font-semibold p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-brand-input text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+            >
+              {selectableDevices.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.brand} &middot; {d.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Slot 2 */}
+          <div className="space-y-1">
+            <span className="flex items-center justify-between">
+              <label className="block text-[10px] font-bold text-slate-400 uppercase">Device Slot 2</label>
+              <span className="h-1.5 w-1.5 rounded-full bg-purple-500 block" />
+            </span>
+            <select
+              value={slot2Id}
+              onChange={(e) => setSlot2Id(e.target.value)}
+              className="w-full text-xs font-semibold p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-brand-input text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+            >
+              {selectableDevices.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.brand} &middot; {d.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Slot 3 */}
+          <div className="space-y-1">
+            <span className="flex items-center justify-between">
+              <label className="block text-[10px] font-bold text-slate-400 uppercase">Device Slot 3 (Optional)</label>
+              <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 block" />
+            </span>
+            <select
+              value={slot3Id}
+              onChange={(e) => setSlot3Id(e.target.value)}
+              className="w-full text-xs font-semibold p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-brand-input text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+            >
+              <option value="">-- None (Dual comparison) --</option>
+              {selectableDevices.map((d) => (
+                <option key={d.id} value={d.id} disabled={d.id === slot1Id || d.id === slot2Id}>
+                  {d.brand} &middot; {d.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Slot 4 */}
+          <div className="space-y-1">
+            <span className="flex items-center justify-between">
+              <label className="block text-[10px] font-bold text-slate-400 uppercase">Device Slot 4 (Optional)</label>
+              <span className="h-1.5 w-1.5 rounded-full bg-pink-500 block" />
+            </span>
+            <select
+              value={slot4Id}
+              onChange={(e) => setSlot4Id(e.target.value)}
+              className="w-full text-xs font-semibold p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-brand-input text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+            >
+              <option value="">-- None (Optional slot) --</option>
+              {selectableDevices.map((d) => (
+                <option key={d.id} value={d.id} disabled={d.id === slot1Id || d.id === slot2Id || d.id === slot3Id}>
+                  {d.brand} &middot; {d.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Side by side dynamic tabular matrix */}
+      <div className="overflow-x-auto rounded-3xl border border-slate-200 dark:border-slate-800/80 shadow-xl bg-white dark:bg-brand-panel/85 max-w-full">
+        <table className="w-full text-left border-collapse table-fixed min-w-[700px]">
+          <thead>
+            <tr className="border-b border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-brand-bg/40">
+              <th className="p-4 md:p-6 text-xs text-slate-400 font-bold w-64">
+                Specification Axis ({activeDevices.length} Selected)
+              </th>
+              
+              {activeDevices.map((device, index) => {
+                const colorBorders = ['bg-blue-500', 'bg-purple-500', 'bg-indigo-500', 'bg-pink-500'];
+                const accentTexts = ['text-blue-500', 'text-purple-500', 'text-indigo-500', 'text-pink-500'];
+                const bgAccents = ['bg-blue-500/10', 'bg-purple-500/10', 'bg-indigo-500/10', 'bg-pink-500/10'];
+                
+                return (
+                  <th key={device.id} className="p-4 md:p-6 text-center relative overflow-hidden bg-gradient-to-b from-slate-50/20 to-transparent dark:from-slate-900/40">
+                    <div className={`absolute top-0 inset-x-0 h-1.5 ${colorBorders[index]}`} />
+                    <span className={`text-[9px] uppercase tracking-wider font-extrabold ${accentTexts[index]} px-2.5 py-1 rounded-full ${bgAccents[index]} inline-block`}>
+                      {device.brand}
+                    </span>
+                    <h4 className="font-extrabold text-xs md:text-sm text-slate-800 dark:text-white mt-2 leading-snug">
+                      {device.name}
+                    </h4>
+                    
+                    {/* Country price */}
+                    <span className="text-xs font-black text-slate-600 dark:text-slate-300 block mt-1">
+                      {formatPriceByCountry(device.price, countryCode)}
+                    </span>
+                    
+                    <button
+                      onClick={() => onViewDeviceDetails && onViewDeviceDetails(device.id)}
+                      className="mt-3 px-3 py-1.5 bg-slate-100 hover:bg-slate-205 dark:bg-slate-800 dark:hover:bg-slate-700 text-[10px] font-bold text-slate-755 dark:text-slate-300 rounded-lg transition-all cursor-pointer inline-block"
+                    >
+                      View Specs Sheet
+                    </button>
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+
+          <tbody className="divide-y divide-slate-150 dark:divide-slate-800/60 text-xs">
+            
+            {/* ROW 1: USER COMMUNITY RATING */}
+            {(() => {
+              const identical = isRowIdentical(d => d.overallRating);
+              return (
+                <tr className={getRowHighlightClass(identical)}>
+                  <td className="p-4 font-bold text-slate-500 bg-slate-50/20 dark:bg-slate-950/15">
+                    <span className="flex items-center justify-between">
+                      <span>Community Rating</span>
+                      {highlightMode !== 'none' && (
+                        identical ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <AlertCircle className="h-3.5 w-3.5 text-blue-400" />
+                      )}
+                    </span>
+                  </td>
+                  {activeDevices.map(device => (
+                    <td key={device.id} className="p-4 text-center">
+                      <div className="flex items-center justify-center gap-1 font-bold text-slate-800 dark:text-slate-200">
+                        <span>{device.overallRating} / 5</span>
+                      </div>
+                      {ratingWinnerId === device.id && (
+                        <span className="mt-1 inline-block text-[9px] uppercase font-extrabold text-amber-500 px-1.5 py-0.5 rounded bg-amber-500/10">
+                          ⭐ Lead Rating
+                        </span>
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })()}
+
+            {/* ROW 2: STATUS */}
+            {(() => {
+              const identical = isRowIdentical(d => d.marketStatus);
+              return (
+                <tr className={getRowHighlightClass(identical)}>
+                  <td className="p-4 font-bold text-slate-500 bg-slate-50/20 dark:bg-slate-950/15">
+                    <span className="flex items-center justify-between">
+                      <span>Availability Status</span>
+                      {highlightMode !== 'none' && (
+                        identical ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <AlertCircle className="h-3.5 w-3.5 text-blue-400" />
+                      )}
+                    </span>
+                  </td>
+                  {activeDevices.map(device => (
+                    <td key={device.id} className="p-4 text-center">
+                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
+                        device.marketStatus === 'Available' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-rose-500/10 text-rose-650'
+                      }`}>
+                        {device.marketStatus}
+                      </span>
+                      {device.expectedLaunch && (
+                        <span className="block text-[10px] text-slate-400 mt-1">{device.expectedLaunch}</span>
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })()}
+
+            {/* ROW 3: DISPLAY SIZING */}
+            {(() => {
+              const identical = isRowIdentical(d => d.specs.display.size);
+              return (
+                <tr className={getRowHighlightClass(identical)}>
+                  <td className="p-4 font-bold text-slate-500 bg-slate-50/20 dark:bg-slate-950/15">
+                    <span className="flex items-center justify-between">
+                      <span>Display Size & Panel</span>
+                      {highlightMode !== 'none' && (
+                        identical ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <AlertCircle className="h-3.5 w-3.5 text-blue-400" />
+                      )}
+                    </span>
+                  </td>
+                  {activeDevices.map(device => (
+                    <td key={device.id} className="p-4 text-center text-slate-700 dark:text-slate-350 font-semibold leading-relaxed">
+                      {device.specs.display.size}
+                      <span className="block text-[10px] text-slate-440 font-normal mt-0.5 leading-normal">{device.specs.display.tech}</span>
+                    </td>
+                  ))}
+                </tr>
+              );
+            })()}
+
+            {/* ROW 4: PEAK BRIGHTNESS */}
+            {(() => {
+              const identical = isRowIdentical(d => d.specs.display.brightness);
+              return (
+                <tr className={getRowHighlightClass(identical)}>
+                  <td className="p-4 font-bold text-slate-500 bg-slate-50/20 dark:bg-slate-950/15">
+                    <span className="flex items-center justify-between">
+                      <span>Screen Lumens (Brightness)</span>
+                      {highlightMode !== 'none' && (
+                        identical ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <AlertCircle className="h-3.5 w-3.5 text-blue-400" />
+                      )}
+                    </span>
+                  </td>
+                  {activeDevices.map(device => (
+                    <td key={device.id} className="p-4 text-center text-slate-600 dark:text-slate-400">
+                      <div>{device.specs.display.brightness}</div>
+                      <span className="block text-[10px] text-indigo-400 mt-0.5">{device.specs.display.resolution}</span>
+                    </td>
+                  ))}
+                </tr>
+              );
+            })()}
+
+            {/* ROW 5: CHIPSET */}
+            {(() => {
+              const identical = isRowIdentical(d => d.specs.performance.chipset);
+              return (
+                <tr className={getRowHighlightClass(identical)}>
+                  <td className="p-4 font-bold text-slate-500 bg-slate-50/20 dark:bg-slate-950/15">
+                    <span className="flex items-center justify-between">
+                      <span>Processor Silicon</span>
+                      {highlightMode !== 'none' && (
+                        identical ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <AlertCircle className="h-3.5 w-3.5 text-blue-400" />
+                      )}
+                    </span>
+                  </td>
+                  {activeDevices.map(device => (
+                    <td key={device.id} className="p-4 text-center text-slate-700 dark:text-slate-300 font-semibold leading-relaxed">
+                      {device.specs.performance.chipset}
+                      <span className="block text-[10px] text-slate-440 font-normal mt-0.5 leading-tight">{device.specs.performance.cpu}</span>
+                    </td>
+                  ))}
+                </tr>
+              );
+            })()}
+
+            {/* ROW 6: MEMORY CONFIG */}
+            {(() => {
+              const identical = isRowIdentical(d => d.specs.performance.ram);
+              return (
+                <tr className={getRowHighlightClass(identical)}>
+                  <td className="p-4 font-bold text-slate-500 bg-slate-50/20 dark:bg-slate-950/15">
+                    <span className="flex items-center justify-between">
+                      <span>RAM & Storage Standard</span>
+                      {highlightMode !== 'none' && (
+                        identical ? <Check className="h-3.5 w-3.5 text-emerald-550" /> : <AlertCircle className="h-3.5 w-3.5 text-blue-400" />
+                      )}
+                    </span>
+                  </td>
+                  {activeDevices.map(device => (
+                    <td key={device.id} className="p-4 text-center text-slate-650 dark:text-slate-400">
+                      <span className="font-bold underline text-slate-840 dark:text-white block">{device.specs.performance.ram}</span>
+                      <span className="block text-[10px] text-slate-400 mt-1 lines-clamp-1">{device.specs.performance.storage}</span>
+                    </td>
+                  ))}
+                </tr>
+              );
+            })()}
+
+            {/* ROW 7: CAMERAS */}
+            {(() => {
+              const identical = isRowIdentical(d => d.specs.camera.main);
+              return (
+                <tr className={getRowHighlightClass(identical)}>
+                  <td className="p-4 font-bold text-slate-500 bg-slate-50/20 dark:bg-slate-950/15">
+                    <span className="flex items-center justify-between">
+                      <span>Primary Camera Sensor</span>
+                      {highlightMode !== 'none' && (
+                        identical ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <AlertCircle className="h-3.5 w-3.5 text-blue-400" />
+                      )}
+                    </span>
+                  </td>
+                  {activeDevices.map(device => (
+                    <td key={device.id} className="p-4 text-center text-slate-600 dark:text-slate-400 leading-normal">
+                      <span className="font-bold text-slate-700 dark:text-slate-350">{device.specs.camera.main.split(',')[0]}</span>
+                      <span className="block text-[10px] text-slate-400 mt-1">Tele: {device.specs.camera.telephoto.split('(')[0]}</span>
+                    </td>
+                  ))}
+                </tr>
+              );
+            })()}
+
+            {/* ROW 8: BATTERY ENERGY */}
+            {(() => {
+              const identical = isRowIdentical(d => d.specs.battery.capacity);
+              return (
+                <tr className={getRowHighlightClass(identical)}>
+                  <td className="p-4 font-bold text-slate-500 bg-slate-50/20 dark:bg-slate-950/15">
+                    <span className="flex items-center justify-between">
+                      <span className="flex items-center gap-1">
+                        <Battery className="h-3.5 w-3.5 text-emerald-500" /> Battery Capacity
+                      </span>
+                      {highlightMode !== 'none' && (
+                        identical ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <AlertCircle className="h-3.5 w-3.5 text-blue-400" />
+                      )}
+                    </span>
+                  </td>
+                  {activeDevices.map(device => (
+                    <td key={device.id} className="p-4 text-center text-slate-800 dark:text-slate-200">
+                      <span className="font-bold block">{device.specs.battery.capacity}</span>
+                      {batteryWinnerId === device.id && (
+                        <span className="mt-1 inline-flex items-center gap-0.5 text-[9px] uppercase font-extrabold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">
+                          <Trophy className="h-2.5 w-2.5" /> Energy Lead
+                        </span>
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })()}
+
+            {/* ROW 9: CHARGING RATE */}
+            {(() => {
+              const identical = isRowIdentical(d => d.specs.battery.charging);
+              return (
+                <tr className={getRowHighlightClass(identical)}>
+                  <td className="p-4 font-bold text-slate-500 bg-slate-50/20 dark:bg-slate-950/15">
+                    <span className="flex items-center justify-between">
+                      <span>Charging Power Rate</span>
+                      {highlightMode !== 'none' && (
+                        identical ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <AlertCircle className="h-3.5 w-3.5 text-blue-400" />
+                      )}
+                    </span>
+                  </td>
+                  {activeDevices.map(device => (
+                    <td key={device.id} className="p-4 text-center text-slate-600 dark:text-slate-400">
+                      <div>{device.specs.battery.charging}</div>
+                      <span className="block text-[10px] text-slate-400 mt-0.5 font-normal">Wireless: {device.specs.battery.wireless.split(' ')[0]}</span>
+                    </td>
+                  ))}
+                </tr>
+              );
+            })()}
+
+            {/* ROW 10: WEIGHT */}
+            {(() => {
+              const identical = isRowIdentical(d => d.specs.design.weight);
+              return (
+                <tr className={getRowHighlightClass(identical)}>
+                  <td className="p-4 font-bold text-slate-500 bg-slate-50/20 dark:bg-slate-950/15">
+                    <span className="flex items-center justify-between">
+                      <span className="flex items-center gap-1">
+                        <Weight className="h-3.5 w-3.5 text-indigo-400" /> Chassis Weight
+                      </span>
+                      {highlightMode !== 'none' && (
+                        identical ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <AlertCircle className="h-3.5 w-3.5 text-blue-400" />
+                      )}
+                    </span>
+                  </td>
+                  {activeDevices.map(device => (
+                    <td key={device.id} className="p-4 text-center">
+                      <span className="font-semibold text-slate-755 dark:text-slate-300">{device.specs.design.weight}</span>
+                      {weightWinnerId === device.id && (
+                        <span className="mt-1 block text-[9px] uppercase font-extrabold text-blue-600 dark:text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded leading-none w-max mx-auto">
+                          🪶 Lighter
+                        </span>
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })()}
+
+            {/* ROW 11: MATERIALS */}
+            {(() => {
+              const identical = isRowIdentical(d => d.specs.design.materials);
+              return (
+                <tr className={getRowHighlightClass(identical)}>
+                  <td className="p-4 font-bold text-slate-500 bg-slate-50/20 dark:bg-slate-950/15">
+                    <span className="flex items-center justify-between">
+                      <span>Materials & Waterproofing</span>
+                      {highlightMode !== 'none' && (
+                        identical ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <AlertCircle className="h-3.5 w-3.5 text-blue-400" />
+                      )}
+                    </span>
+                  </td>
+                  {activeDevices.map(device => (
+                    <td key={device.id} className="p-4 text-center text-slate-650 dark:text-slate-400">
+                      <div className="line-clamp-2 md:line-clamp-none leading-snug">{device.specs.design.materials}</div>
+                      <span className="block text-[10px] text-zinc-400 mt-1">Shield: {device.specs.design.waterproof}</span>
+                    </td>
+                  ))}
+                </tr>
+              );
+            })()}
+
+            {/* ROW 12: OS SUPPORT */}
+            {(() => {
+              const identical = isRowIdentical(d => d.specs.software.launchOs);
+              return (
+                <tr className={getRowHighlightClass(identical)}>
+                  <td className="p-4 font-bold text-slate-500 bg-slate-50/20 dark:bg-slate-950/15">
+                    <span className="flex items-center justify-between">
+                      <span>Software Updates Promise</span>
+                      {highlightMode !== 'none' && (
+                        identical ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <AlertCircle className="h-3.5 w-3.5 text-blue-400" />
+                      )}
+                    </span>
+                  </td>
+                  {activeDevices.map(device => (
+                    <td key={device.id} className="p-4 text-center text-slate-650 dark:text-slate-450 leading-relaxed">
+                      <span className="font-bold text-slate-800 dark:text-slate-200 block">{device.specs.software.launchOs}</span>
+                      <span className="block text-[10px] text-blue-500 dark:text-blue-400 font-semibold mt-1">{device.specs.software.updatesPromise}</span>
+                    </td>
+                  ))}
+                </tr>
+              );
+            })()}
+
+          </tbody>
+        </table>
+      </div>
+
+      {/* Comparison analysis takeaways footer row */}
+      <div className="flex flex-col sm:flex-row items-center justify-between p-5 bg-gradient-to-r from-blue-500/5 to-purple-500/5 border border-slate-200 dark:border-slate-800 rounded-3xl gap-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-blue-600/10 text-blue-600 dark:text-blue-400 rounded-xl">
+            <Sparkles className="h-5 w-5" />
+          </div>
+          <div>
+            <h4 className="font-extrabold text-xs text-slate-800 dark:text-slate-200">Interactive Differences & Similarities Highlighted</h4>
+            <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+              Compare 2, 3, or up to 4 devices simultaneously in real-time. Switch high-contrast highlights to pinpoint key details!
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={() => {
+            // Swap slots 1 & 2
+            const temp = slot1Id;
+            setSlot1Id(slot2Id);
+            setSlot2Id(temp);
+          }}
+          className="flex items-center gap-1.5 px-4 py-2 bg-white dark:bg-brand-input border border-slate-200/80 dark:border-slate-800/80 text-xs font-bold rounded-xl text-slate-700 dark:text-slate-350 hover:bg-slate-50 dark:hover:bg-brand-card transition-all active:scale-95 cursor-pointer shadow-sm shrink-0"
+        >
+          <RefreshCw className="h-3.5 w-3.5 text-blue-500" /> Swap Slot 1 & 2
+        </button>
+      </div>
+    </div>
+  );
+}
